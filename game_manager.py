@@ -55,8 +55,9 @@ class GameManager:
             # Check for timeout (Anti-Hogging Security)
             time_spent = current_time - self.pending_move_start_time
             if time_spent > self.bot_move_timeout:
-                self.game_over_reason = f"Forfeit: {current_player.name} timed out (Stuck/Frozen)"
-                self.pending_move_bot.kill() # Hard kill the frozen process
+                bot = self.pending_move_bot
+                self.game_over_reason = f"Forfeit: {bot.name} timed out"
+                bot.kill()
                 return
 
             # Poll for result

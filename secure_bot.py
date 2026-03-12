@@ -9,7 +9,9 @@ def bot_worker(bot_cls, name, input_queue, output_queue):
     try:
         # Instantiate the bot inside the isolated process
         bot_instance = bot_cls(name)
-        bot_instance.initialize(chess.WHITE) # Color doesn't strictly matter for calculation here
+        # give the bot a default color (white) before first move
+        init_board = chess.Board()
+        bot_instance.initialize(init_board.turn)
         
         while True:
             # 1. Wait for a board FEN (blocking wait inside this process only)
@@ -21,6 +23,9 @@ def bot_worker(bot_cls, name, input_queue, output_queue):
             board = chess.Board(fen)
             
             try:
+                # ensure the bot knows its color for this position
+                bot_instance.initialize(board.turn)
+
                 # 2. Run the potentially dangerous user code
                 move = bot_instance.make_move(board)
                 
@@ -61,9 +66,16 @@ class SecureBotWrapper(ChessPlayer):
 
     def request_move(self, board):
         """Non-blocking request to start thinking"""
-        # Clean out old messages
-        while not self.output_queue.empty():
-            self.output_queue.get()
+        # Clean out old MOVE/ERROR notifications but keep CRASH info
+        try:
+            while True:
+                msg_type, _ = self.output_queue.get_nowait()
+                if msg_type == "CRASH":
+                    # put it back so check_result can handle it
+                    self.output_queue.put((msg_type, _))
+                    break
+        except Exception:
+            pass
             
         # Send FEN (Safe string representation)
         self.input_queue.put(board.fen())
