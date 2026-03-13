@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chess-tournament"
+version = "0.1.0"
+description = "A chess tournament application with bot players and UI"
+readme = "README.md"
+requires-python = ">=3.13"
+license = {text = "MIT"}
+authors = [
+    {name = "Hackathon Team"}
+]
+
+dependencies = [
+    "python-chess>=1.10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "black>=23.0",
+    "flake8>=6.0",
+]
+
+[tool.setuptools]
+packages = ["chess_tournament"]

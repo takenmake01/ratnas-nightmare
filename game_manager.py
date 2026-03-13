@@ -1,6 +1,7 @@
 import chess
 import time
 import settings
+from game_recorder import GameRecord
 
 class GameManager:
     def __init__(self, white_player, black_player):
@@ -27,7 +28,10 @@ class GameManager:
         self.bot_move_timeout = 5.0   # HARD LIMIT: Kill bot if it takes > 5s per move
         
         self.game_over_reason = ""
-        self.time_history = [] 
+        self.time_history = []
+        
+        # Game Recording
+        self.game_record = GameRecord(white_player.name, black_player.name) 
 
     def update(self):
         current_time = time.time()
@@ -105,6 +109,9 @@ class GameManager:
             self.white_time += settings.INCREMENT_SEC
         else: 
             self.black_time += settings.INCREMENT_SEC
+        
+        # Record the move in the game record
+        self.game_record.add_move(move.uci(), self.white_time, self.black_time)
 
     def try_manual_move(self, start_sq, end_sq):
         # Human moves bypass the queue system
@@ -138,10 +145,26 @@ class GameManager:
             self.game_over_reason = ""
             
     def reset_game(self):
+        # Stop any pending bot operations
         if self.pending_move_bot:
             self.pending_move_bot.kill()
             self.pending_move_bot = None
+        
+        # Kill and cleanly restart both players
+        for player in [self.white_player, self.black_player]:
+            if hasattr(player, 'kill'): 
+                try:
+                    player.kill()
+                except Exception as e:
+                    print(f"Warning: Error killing {player.name}: {e}")
             
+            if hasattr(player, 'start_process'):
+                try:
+                    player.start_process()
+                except Exception as e:
+                    print(f"Warning: Error restarting {player.name}: {e}")
+            
+        # Reset board state
         self.board.reset()
         self.white_time = settings.GAME_TIME_LIMIT
         self.black_time = settings.GAME_TIME_LIMIT
@@ -149,10 +172,5 @@ class GameManager:
         self.game_over_reason = ""
         self.is_paused = True
         
-        # Restart worker processes to clear any bad state
-        if hasattr(self.white_player, 'kill'): 
-            self.white_player.kill()
-            self.white_player.start_process()
-        if hasattr(self.black_player, 'kill'): 
-            self.black_player.kill()
-            self.black_player.start_process()
+        # Reset the game record for new game
+        self.game_record = GameRecord(self.white_player.name, self.black_player.name)

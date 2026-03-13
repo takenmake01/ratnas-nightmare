@@ -44,13 +44,7 @@ class CrasherBot(ChessPlayer):
         return 1 / 0 # ZeroDivisionError -> Game Over for everyone
     
 
-class DummyGeminiBot(ChessPlayer):
-    def make_move(self, board):
-        return None # Placeholder for Gemini Bot integration
-    
-# bots.py (Add this new class)
 
-# ... (keep your existing imports and classes) ...
 
 # --- Bot 3: Smart Bot (Minimax + AlphaBeta + Positional Heuristics) ---
 class SmartBot(ChessPlayer):

@@ -2,6 +2,8 @@ import pygame
 import chess
 import settings
 from game_manager import GameManager
+from game_recorder import GameRecorder
+from game_replayer import GameReplayer
 
 class ChessUI:
     def __init__(self, white_bot, black_bot):
@@ -20,6 +22,12 @@ class ChessUI:
 
         self.manager = GameManager(white_bot, black_bot)
         self.selected_square = None
+        
+        # Game recording and replay
+        self.recorder = GameRecorder()
+        self.replayer = None
+        self.in_replay_mode = False
+        self._game_saved = False
 
     def get_square_under_mouse(self, pos):
         x, y = pos
@@ -76,26 +84,31 @@ class ChessUI:
         return f"{mins:02}:{secs:02}.{millis:02}"
 
     def draw_board(self):
+        # Use replayer board if in replay mode, otherwise use manager board
+        board = self.replayer.get_current_board() if self.in_replay_mode and self.replayer else self.manager.board
+        
         for r in range(settings.DIMENSION):
             for c in range(settings.DIMENSION):
                 color = settings.LIGHT_SQ if (r + c) % 2 == 0 else settings.DARK_SQ
                 rect = pygame.Rect(c*settings.SQ_SIZE, r*settings.SQ_SIZE, settings.SQ_SIZE, settings.SQ_SIZE)
                 pygame.draw.rect(self.screen, color, rect)
                 
-                if self.selected_square is not None:
+                if self.selected_square is not None and not self.in_replay_mode:
                     sel_file = chess.square_file(self.selected_square)
                     sel_rank = chess.square_rank(self.selected_square)
                     if c == sel_file and r == (7 - sel_rank):
                         pygame.draw.rect(self.screen, settings.HIGHLIGHT_COLOR, rect, 5)
 
-                if self.manager.board.move_stack:
-                    last_move = self.manager.board.peek()
+                if board.move_stack:
+                    last_move = board.peek()
                     if (c == chess.square_file(last_move.from_square) and r == 7-chess.square_rank(last_move.from_square)) or \
                        (c == chess.square_file(last_move.to_square) and r == 7-chess.square_rank(last_move.to_square)):
                        pygame.draw.rect(self.screen, (200, 200, 50), rect, 4)
 
     def draw_pieces(self):
-        board = self.manager.board
+        # Use replayer board if in replay mode, otherwise use manager board
+        board = self.replayer.get_current_board() if self.in_replay_mode and self.replayer else self.manager.board
+        
         for i in range(64):
             piece = board.piece_at(i)
             if piece:
@@ -109,6 +122,13 @@ class ChessUI:
     def draw_ui(self):
         pygame.draw.rect(self.screen, settings.UI_BG, (0, settings.BOARD_HEIGHT, settings.WIDTH, settings.HEIGHT - settings.BOARD_HEIGHT))
         
+        if self.in_replay_mode and self.replayer:
+            self._draw_replay_ui()
+        else:
+            self._draw_game_ui()
+    
+    def _draw_game_ui(self):
+        """Draw UI for active game"""
         w_time_str = self.format_time(self.manager.white_time)
         b_time_str = self.format_time(self.manager.black_time)
 
@@ -143,6 +163,8 @@ class ChessUI:
             res = self.manager.board.result()
             status_text = f"GAME OVER: {res}"
             color = (255, 50, 50)
+            # Save the game when it ends
+            self._save_current_game()
         elif self.manager.is_paused:
             status_text = "PAUSED (Manual Mode)"
             color = (100, 200, 255)
@@ -152,11 +174,98 @@ class ChessUI:
 
         self.screen.blit(self.ui_font.render(status_text, True, color), (20, status_y))
         
-        # Instructions aligned right
-        instr_text = "Space: Run | R: Reset"
+        # Instructions
+        instr_text = "Space: Run | R: Reset | V: View Replay"
         instr_surf = self.ui_font.render(instr_text, True, (200,200,200))
         instr_x = settings.WIDTH - instr_surf.get_width() - 20
         self.screen.blit(instr_surf, (instr_x, status_y))
+    
+    def _draw_replay_ui(self):
+        """Draw UI for game replay"""
+        if not self.replayer:
+            return
+        
+        info = self.replayer.get_game_info()
+        name_y = settings.BOARD_HEIGHT + int(settings.SQ_SIZE * 0.15)
+        timer_y = settings.BOARD_HEIGHT + int(settings.SQ_SIZE * 0.55)
+        status_y = settings.BOARD_HEIGHT + int(settings.SQ_SIZE * 1.2)
+        
+        # Draw player names
+        self.screen.blit(self.header_font.render(f"White: {info['white']}", True, (100, 200, 255)), (20, name_y))
+        b_text_surf = self.header_font.render(f"Black: {info['black']}", True, (100, 200, 255))
+        b_x = settings.WIDTH - b_text_surf.get_width() - 20
+        self.screen.blit(b_text_surf, (b_x, name_y))
+        
+        # Draw times
+        w_time_str = self.format_time(self.replayer.white_time)
+        b_time_str = self.format_time(self.replayer.black_time)
+        self.screen.blit(self.timer_font.render(w_time_str, True, (255, 255, 255)), (20, timer_y))
+        b_timer_surf = self.timer_font.render(b_time_str, True, (255, 255, 255))
+        b_timer_x = settings.WIDTH - b_timer_surf.get_width() - 20
+        self.screen.blit(b_timer_surf, (b_timer_x, timer_y))
+        
+        # Draw replay status
+        move_num = info['current_move']
+        total_moves = info['total_moves']
+        status_text = f"REPLAY: Move {move_num}/{total_moves} | Result: {info['result']}"
+        color = (100, 200, 255)
+        self.screen.blit(self.ui_font.render(status_text, True, color), (20, status_y))
+        
+        # Replay controls
+        play_text = "Space: Play/Pause | ←: Back | →: Next | E: Exit"
+        instr_surf = self.ui_font.render(play_text, True, (200,200,200))
+        instr_x = settings.WIDTH - instr_surf.get_width() - 20
+        self.screen.blit(instr_surf, (instr_x, status_y))
+
+    def _save_current_game(self):
+        """Save the current game when it ends (called once)"""
+        if not hasattr(self, '_game_saved') or not self._game_saved:
+            record = self.manager.game_record
+            if self.manager.board.is_game_over():
+                record.set_result(self.manager.board.result(), self.manager.game_over_reason)
+            self.recorder.save_game(record)
+            self._game_saved = True
+            print(f"Game saved: {record.white_player_name} vs {record.black_player_name}")
+    
+    def _start_replay(self, filename):
+        """Start replaying a saved game"""
+        try:
+            record = self.recorder.load_game(filename)
+            self.replayer = GameReplayer(record)
+            self.in_replay_mode = True
+            self.selected_square = None
+            print(f"Loaded replay: {filename}")
+        except Exception as e:
+            print(f"Failed to load game: {e}")
+    
+    def _exit_replay(self):
+        """Exit replay mode and return to normal game"""
+        if self.in_replay_mode:
+            self.in_replay_mode = False
+            self.replayer = None
+            self.selected_square = None
+            # Reset the game manager to clean state after replay
+            self.manager.reset_game()
+            self._game_saved = False
+    
+    def _show_saved_games_menu(self):
+        """Display list of saved games and select one to replay"""
+        saved_games = self.recorder.list_saved_games()
+        
+        if not saved_games:
+            print("No saved games found!")
+            return
+        
+        print("\n=== SAVED GAMES ===")
+        for i, game_file in enumerate(saved_games, 1):
+            print(f"{i}. {game_file}")
+        
+        try:
+            choice = int(input("\nSelect game number (or 0 to cancel): "))
+            if 1 <= choice <= len(saved_games):
+                self._start_replay(saved_games[choice - 1])
+        except (ValueError, IndexError):
+            print("Invalid selection")
 
     def run(self):
         running = True
@@ -166,27 +275,48 @@ class ChessUI:
                     running = False
                 
                 if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_SPACE:
-                        self.manager.is_paused = not self.manager.is_paused
-                        self.selected_square = None
-                    if event.key == pygame.K_r:
-                        self.manager.reset_game()
-                        self.selected_square = None
-                    if event.key == pygame.K_LEFT:
-                        self.manager.undo_move()
-                        self.selected_square = None
+                    if self.in_replay_mode and self.replayer:
+                        # Replay mode controls
+                        if event.key == pygame.K_SPACE:
+                            self.replayer.toggle_playback()
+                        elif event.key == pygame.K_LEFT:
+                            self.replayer.rewind_move()
+                        elif event.key == pygame.K_RIGHT:
+                            self.replayer.advance_move()
+                        elif event.key == pygame.K_e:
+                            self._exit_replay()
+                    else:
+                        # Normal game controls
+                        if event.key == pygame.K_SPACE:
+                            self.manager.is_paused = not self.manager.is_paused
+                            self.selected_square = None
+                        elif event.key == pygame.K_r:
+                            self.manager.reset_game()
+                            self._game_saved = False
+                            self.selected_square = None
+                        elif event.key == pygame.K_LEFT:
+                            self.manager.undo_move()
+                            self.selected_square = None
+                        elif event.key == pygame.K_v:
+                            self._show_saved_games_menu()
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:
+                    if event.button == 1 and not self.in_replay_mode:
                         self.handle_click(pygame.mouse.get_pos())
 
-            self.manager.update()
+            if self.in_replay_mode and self.replayer:
+                # Update replay
+                dt = self.clock.tick(settings.FPS) / 1000.0
+                self.replayer.update(dt)
+            else:
+                # Update normal game
+                self.manager.update()
+                self.clock.tick(settings.FPS)
             
             self.screen.fill(settings.UI_BG)
             self.draw_board()
             self.draw_pieces()
             self.draw_ui()
             pygame.display.flip()
-            self.clock.tick(settings.FPS)
 
         pygame.quit()
