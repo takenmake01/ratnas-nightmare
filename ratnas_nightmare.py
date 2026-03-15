@@ -1,4 +1,5 @@
-import torch, chess
+import torch
+import chess
 import random
 from chess_player import ChessPlayer
 from model import ChessNet
@@ -7,48 +8,58 @@ from training.dataset import board_to_tensor
 class RatnasNightmare(ChessPlayer):
     def __init__(self, name):
         super().__init__(name)
-
-        # torch.serialization.add_safe_globals([ChessNet])
-
-        # AI
+        # torch.serialization.add_safe_globals([ChessNet])  # usually not needed with weights_only=False
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # self.net = ChessNet().to(self.device)
         # self.net.load_state_dict(torch.load("ratnasNightmare.pth", weights_only=False, map_location=self.device))
         self.net = torch.load("ratnasNightmare.pth", weights_only=False, map_location=self.device)
+        self.net.to(self.device)  # make sure it's on correct device
 
-    # AI
-    def predict_best_move(self, board):
+    def predict_best_move(self, board: chess.Board) -> chess.Move:
         self.net.eval()
+        with torch.no_grad():
+            # 1. Convert board → tensor (B=1, C=12, H=8, W=8)
+            x = torch.tensor(board_to_tensor(board), dtype=torch.float32
+                             ).permute(2, 0, 1).unsqueeze(0).to(self.device)
 
-        with torch.no_grad():                   # no grads needed
-            # 1. Convert the board to (8,8,12) → (B=1,C=12,H=8,W=8)
-            x = torch.tensor(board_to_tensor(board)).permute(2,0,1).unsqueeze(0).to(self.device)
+            # 2. Forward → (1, 4096) logits
+            logits = self.net(x)          # shape: (1, 4096)
+            probs = torch.softmax(logits, dim=1)[0]   # (4096,)
 
-            # 2. Forward through the network – shape: (B,4096)
-            logits   = self.net(x)                                   # forward pass
-
-            # 3. Softmax → prob‑distribution over all legal half‑moves
-            probs    = torch.nn.functional.softmax(logits, dim=1)[0]
-
-            # 4. Pick top‑k indices – these are just flat numbers in [0,4095]
-            top_idx   = torch.topk(probs, 3).indices.cpu().numpy()
-
-        # 5. Decode index → `chess.Move` (from_square * 64 + to_square)
-        moves = [chess.Move(i//64, i%64) for i in top_idx]
-        return moves
-
-    def make_move(self, board):
         legal_moves = list(board.legal_moves)
-
         if not legal_moves:
-                return None
+            return None
 
-        for move in self.predict_best_move(board):
-            if move in legal_moves:
-                print("Legal NN move")
-                return move
-            
-        else:
-            print("[WARNING] All NN suggested moves illegal, falling back to random selection")
-            
+        # Compute policy value for each legal move
+        legal_probs = []
+        for move in legal_moves:
+            # flat index = from_square * 64 + to_square
+            idx = move.from_square * 64 + move.to_square
+            # ignore promotion for now — your net seems to have no promotion head
+            p = probs[idx].item()
+            legal_probs.append((p, move))
+
+        if not legal_probs:
+            # fallback — should not happen
+            print("[WARNING] No legal moves could be scored (bug?) → random")
             return random.choice(legal_moves)
+
+        # Pick the legal move with highest probability
+        best_p, best_move = max(legal_probs, key=lambda x: x[0])
+
+        if best_p > 0:   # just for debug/info
+            print(f"Legal NN move (prob {best_p:.4f})")
+        else:
+            print("[WARNING] All legal moves have ~0 probability → picking highest anyway")
+
+        return best_move
+
+    def make_move(self, board: chess.Board) -> chess.Move | None:
+        move = self.predict_best_move(board)
+        if move is None:
+            return None
+        # Optional: you can still add a safety check
+        if move not in board.legal_moves:
+            print("[ERROR] Selected move is illegal — this should not happen")
+            return random.choice(list(board.legal_moves))
+        return move
