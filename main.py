@@ -29,7 +29,7 @@ if __name__ == "__main__":
     else:
         # Default: Watch two bots fight
         player1 = SecureBotWrapper(RatnasNightmare, "Ratna's Nightmare")
-        player2 = SecureBotWrapper(SmartBot, "Gemini SmartBot")
+        player2 = SecureBotWrapper(PacifistBot, "Gemini SmartBot")
 
     # Launch the game
     ui = ChessUI(white_bot=player1, black_bot=player2)

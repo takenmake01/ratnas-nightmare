@@ -12,7 +12,7 @@ class RatnasNightmare(ChessPlayer):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # self.net = ChessNet().to(self.device)
         # self.net.load_state_dict(torch.load("ratnasNightmare.pth", weights_only=False, map_location=self.device))
-        self.net = torch.load("ratnasNightmare.pth", weights_only=False, map_location=self.device)
+        self.net = torch.load("ratnasNightmare_final.pth", weights_only=False, map_location=self.device)
         self.net.to(self.device)  # make sure it's on correct device
 
     def predict_best_move(self, board: chess.Board) -> chess.Move:

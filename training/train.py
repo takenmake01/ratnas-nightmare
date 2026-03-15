@@ -19,6 +19,7 @@ def train_one_epoch(net, loader, device, lr=LEARNING_RATE):
     net.train()
     optimizer = optim.AdamW(net.parameters(), lr=lr)
     criterion = nn.CrossEntropyLoss()
+    
     for X_batch, y_batch in tqdm(loader):
         X_batch, y_batch = X_batch.to(device), y_batch.to(device)
         optimizer.zero_grad()
@@ -43,7 +44,12 @@ if __name__ == "__main__":
     for epoch in range(EPOCHS):
         print(f"=== Epoch {epoch+1}/{EPOCHS} ===")
         train_one_epoch(net, loader, device)
+
+        try:
+            torch.save(net, f"../ratnasNightmare_epoch_{epoch+1}.pth")
+        except:
+            print("epoch save failed")
         # with torch.no_grad():
         #     writer.add_scalar("loss", nn.L1Loss(), global_step=epoch)
 
-    torch.save(net, "../ratnasNightmare.pth")
+    torch.save(net, "../ratnasNightmare_final.pth")

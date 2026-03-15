@@ -21,6 +21,11 @@ def load_games_from_pgn(pgn_path: str):
             counter += 1
             game = chess.pgn.read_game(f)
 
+            if (counter >= 10000):
+                game = None
+
+    
+
 
 
 # ------------------------------------------------------------------

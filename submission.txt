@@ -1,0 +1,5 @@
+Team name: Memory Shortage Avoided
+Bot name: Ratna's Nightmare
+Repo: https://github.com/takenmake01/ratnas-nightmare
+Files: ratnas_nightmare.py & training/dataset.py
+Bot summary: We build the bot with the help of several AIs. A local openai-gpt variant, Grok, Gemini, etc. There's a training phase where a PyTorch neural network is trained, then the next phase where we give the trained model (saved in a .pth file) to an interpreter which converts them into moves on the chess board.
