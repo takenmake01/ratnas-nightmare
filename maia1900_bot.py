@@ -5,15 +5,15 @@ import time
 import os
 import sys
 import shutil
+import threading
+
 
 class Maia1900Bot(ChessPlayer):
     """
     Maia-1900 via Nix-packaged lc0 (nixpkgs#lc0).
-    No explicit backend (uses lc0 default that worked in manual test).
     """
 
     def __init__(self, *args, **kwargs):
-        # Accept any extra args/kwargs from SecureBotWrapper / framework
         super().__init__(*args, **kwargs)
         self._engine = None
         self._started = False
@@ -35,6 +35,10 @@ class Maia1900Bot(ChessPlayer):
             "or have lc0 in your PATH."
         )
 
+    def _drain_stderr(self):
+        for line in self._engine.stderr:
+            print(f"[lc0 stderr] {line.rstrip()}", file=sys.stderr)
+
     def _ensure_engine(self):
         if self._started:
             return True
@@ -47,12 +51,10 @@ class Maia1900Bot(ChessPlayer):
 
         try:
             cmd = [
+                "stdbuf", "-oL",
                 self.lc0_path,
                 f"--weights={weights}",
                 "--threads=1",
-                "--nncache_size=200000",
-                "--move-time=40000",
-                "--logfile=maia_lc0.log"
             ]
 
             print(f"[Maia-1900] Launching lc0: {' '.join(cmd)}", file=sys.stderr)
@@ -61,30 +63,31 @@ class Maia1900Bot(ChessPlayer):
                 cmd,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,   # merge errors into stdout
+                stderr=subprocess.PIPE,
                 text=True,
-                bufsize=1,
+                bufsize=0,
                 universal_newlines=True,
+                env=os.environ.copy(),
                 cwd=os.getcwd()
             )
 
-            time.sleep(3.0)  # Give time for weights loading
+            threading.Thread(target=self._drain_stderr, daemon=True).start()
+
+            time.sleep(1.0)
+
+            if self._engine.poll() is not None:
+                raise RuntimeError(f"lc0 exited immediately with code {self._engine.returncode}")
 
             self._write("uci")
-            resp = self._read_until("uciok", max_lines=200)
+            resp = self._read_until("uciok", max_lines=2000, timeout=60.0)
 
-            print(f"[Maia-1900] Raw lc0 response after 'uci':\n{resp}\n", file=sys.stderr)
+            print(f"[Maia-1900] Init response:\n{resp}\n", file=sys.stderr)
 
             if "uciok" not in resp.lower():
-                # Try to read more output
-                extra = ""
-                for _ in range(15):
-                    line = self._read_line()
-                    if line:
-                        extra += line + "\n"
-                if extra:
-                    print(f"[Maia-1900] Additional output:\n{extra}", file=sys.stderr)
                 raise RuntimeError("Did not receive 'uciok' from lc0")
+
+            self._write("isready")
+            self._read_until("readyok", max_lines=50, timeout=10.0)
 
             self._started = True
             print("[Maia-1900] Engine initialized successfully!", file=sys.stderr)
@@ -108,18 +111,21 @@ class Maia1900Bot(ChessPlayer):
             try:
                 return self._engine.stdout.readline().rstrip()
             except:
-                return ""
+                pass
         return ""
 
-    def _read_until(self, keyword, max_lines=200):
+    def _read_until(self, keyword, max_lines=2000, timeout=60.0):
         lines = []
+        deadline = time.time() + timeout
         for _ in range(max_lines):
+            if time.time() > deadline:
+                print(f"[Maia-1900] _read_until timed out waiting for '{keyword}'", file=sys.stderr)
+                break
             line = self._read_line()
             if line:
                 lines.append(line)
             if keyword.lower() in line.lower():
                 break
-            time.sleep(0.02)
         return "\n".join(lines)
 
     def _kill_engine(self):
@@ -144,19 +150,24 @@ class Maia1900Bot(ChessPlayer):
 
         try:
             self._write("ucinewgame")
-            time.sleep(0.1)
-            self._write(f"position fen {board.fen()}")
-            self._write("go movetime 4000")
+            self._write("isready")
+            self._read_until("readyok", max_lines=50, timeout=10.0)
 
-            output = self._read_until("bestmove", max_lines=300)
+            self._write(f"position fen {board.fen()}")
+            self._write("isready")
+            self._read_until("readyok", max_lines=50, timeout=10.0)
+
+            self._write("go movetime 1500")
+
+            output = self._read_until("bestmove", max_lines=500, timeout=10.0)
+            print(f"[Maia-1900] go output:\n{output}", file=sys.stderr)
 
             for line in output.splitlines():
                 if line.startswith("bestmove"):
                     parts = line.split()
-                    if len(parts) > 1:
-                        uci = parts[1]
+                    if len(parts) > 1 and parts[1] != "(none)":
                         try:
-                            move = chess.Move.from_uci(uci)
+                            move = chess.Move.from_uci(parts[1])
                             if move in board.legal_moves:
                                 return move
                         except ValueError:
@@ -165,6 +176,5 @@ class Maia1900Bot(ChessPlayer):
         except Exception as e:
             print(f"[Maia-1900] Error during make_move: {str(e)}", file=sys.stderr)
 
-        # Fallback
         moves = list(board.legal_moves)
         return moves[0] if moves else None
