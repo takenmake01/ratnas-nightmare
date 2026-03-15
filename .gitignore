@@ -85,3 +85,13 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+# Ignore datasets
+*.zst
+*.pgn
+*.pth
+*.pt
+
+# ignore runs
+events.out.tfevents.*
