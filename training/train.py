@@ -1,6 +1,8 @@
 # written with AI
 import torch, torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
+from torch.utils.data import DataLoader
+import torch.nn as nn
 from tqdm.auto import tqdm
 
 # local imports – make sure the package root is on PYTHONPATH
@@ -29,7 +31,7 @@ if __name__ == "__main__":
                            batch_size=BATCH_SIZE,
                            shuffle=True,
                            num_workers=NUM_WORKERS,
-                           pin_memory=True)
+                           pin_memory=False)
 
     net      = ChessNet().to(device)
     writer   = SummaryWriter("runs/epoch_log")            # optional tensorboard
@@ -37,5 +39,7 @@ if __name__ == "__main__":
     for epoch in range(EPOCHS):
         print(f"=== Epoch {epoch+1}/{EPOCHS} ===")
         train_one_epoch(net, loader)
-        with torch.no_grad():
-            writer.add_scalar("loss", loss.item(), global_step=epoch)
+        # with torch.no_grad():
+        #     writer.add_scalar("loss", nn.L1Loss(), global_step=epoch)
+
+    

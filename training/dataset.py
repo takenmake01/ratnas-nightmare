@@ -1,5 +1,6 @@
 # written with AI
 import numpy as np, torch
+# from concurrent.features import threadPoolExecutor
 from torch.utils.data import Dataset, DataLoader
 import chess.pgn
 
@@ -23,7 +24,7 @@ def load_games_from_pgn(pgn_path: str):
             game = chess.pgn.read_game(f)
 
             # debug
-            if (counter >= 30000):
+            if (counter >= 2000):
                 game = None
 
 
@@ -70,5 +71,5 @@ class ChessPolicyDataset(Dataset):
     def __getitem__(self, idx):
         X,y  = self.samples[idx]
         # torch expects channel first: C×H×W
-        tensor_X = torch.tensor(X).permute(2,0,1)
-        return tensor_X, torch.tensor(y, dtype=torch.long)
+        tensor_X = torch.tensor(X, device=torch.device("cuda")).permute(2,0,1)
+        return tensor_X, torch.tensor(y, dtype=torch.long, device=torch.device("cuda"))

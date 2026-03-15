@@ -90,3 +90,6 @@ dmypy.json
 # Ignore datasets
 *.zst
 *.pgn
+
+# ignore runs
+events.out.tfevents.*
