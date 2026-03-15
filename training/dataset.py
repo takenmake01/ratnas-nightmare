@@ -1,8 +1,8 @@
 # written with AI
 import numpy as np, torch
-# from concurrent.features import threadPoolExecutor
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import IterableDataset
 import chess.pgn
+import random
 
 # ------------------------------------------------------------------
 def load_games_from_pgn(pgn_path: str):
@@ -19,13 +19,7 @@ def load_games_from_pgn(pgn_path: str):
                 board.push(move.move)                              # advance half‑move
 
             counter += 1
-            print("Read games: " + str(counter))
-
             game = chess.pgn.read_game(f)
-
-            # debug
-            if (counter >= 2000):
-                game = None
 
 
 
@@ -55,21 +49,31 @@ def legal_move_to_int(move):
     return move.from_square*64 + move.to_square
 
 
-class ChessPolicyDataset(Dataset):
-    """Dataset that turns PGN → (board_tensor , move_index) pairs."""
-    def __init__(self, pgn_file: str, max_positions=None):
-        self.samples = []
-        for board, mv in load_games_from_pgn(pgn_file):
-            X   = board_to_tensor(board)
-            y   = legal_move_to_int(mv)
-            self.samples.append((X, y))
-            if max_positions and len(self.samples)>=max_positions:
-                break
+class ChessPolicyDataset(IterableDataset):
+    """Dataset that streams from a PGN file."""
+    def __init__(self, pgn_file: str, buffer_size=100000):
+        super().__init__()
+        self.pgn_file = pgn_file
+        self.buffer_size = buffer_size
 
-    def __len__(self): return len(self.samples)
+    def __iter__(self):
+        game_iterator = load_games_from_pgn(self.pgn_file)
+        
+        buffer = []
+        for board, move in game_iterator:
+            buffer.append((board, move))
+            if len(buffer) >= self.buffer_size:
+                random.shuffle(buffer)
+                for b, m in buffer:
+                    X = board_to_tensor(b)
+                    y = legal_move_to_int(m)
+                    yield torch.from_numpy(X).permute(2,0,1), torch.tensor(y, dtype=torch.long)
+                buffer = []
 
-    def __getitem__(self, idx):
-        X,y  = self.samples[idx]
-        # torch expects channel first: C×H×W
-        tensor_X = torch.tensor(X, device=torch.device("cuda")).permute(2,0,1)
-        return tensor_X, torch.tensor(y, dtype=torch.long, device=torch.device("cuda"))
+        # Yield remaining items in the buffer
+        if len(buffer) > 0:
+            random.shuffle(buffer)
+            for b, m in buffer:
+                X = board_to_tensor(b)
+                y = legal_move_to_int(m)
+                yield torch.from_numpy(X).permute(2,0,1), torch.tensor(y, dtype=torch.long)
