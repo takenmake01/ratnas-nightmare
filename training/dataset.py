@@ -6,30 +6,46 @@ import chess.pgn
 # ------------------------------------------------------------------
 def load_games_from_pgn(pgn_path: str):
     """Yield successive (board, move) pairs for every half‑move."""
+    print("Reading games...")
+    counter = 0
+
     with open(pgn_path, 'r', encoding='utf-8') as f:
         game = chess.pgn.read_game(f)
         while game is not None:
             board = chess.Board()
             for i, move in enumerate(game.mainline()):          # SAN moves
-                yield board.copy(), move                    # 1st: board; 2nd: Move
-                board.push(move)                              # advance half‑move
+                yield board.copy(), move.move                    # 1st: board; 2nd: Move
+                board.push(move.move)                              # advance half‑move
+
+            counter += 1
+            print("Read games: " + str(counter))
+
             game = chess.pgn.read_game(f)
+
+            # debug
+            if (counter >= 30000):
+                game = None
+
 
 
 # ------------------------------------------------------------------
 def board_to_tensor(board):
     """Return an (8,8,12) numpy array for a `chess.Board`."""
     PIECE_MAP = {
-        chess.PAWN:0,   chess.PKNIGHT:1,  chess.PBISHOP:2,
-        chess.PROOK:3,  chess.PQUEEN:4,   chess.PKING:5,
+        chess.PAWN:0,   chess.KNIGHT:1,  chess.BISHOP:2,
+        chess.ROOK:3,  chess.QUEEN:4,   chess.KING:5,
         # black pieces share the same indices
-        chess.PBLACK:6, chess.Knight:7,   chess.Bishop:8,
-        chess.Rook:9,   chess.Queen:10,  chess.King:11}
+    }
+    PIECE_COLOUR_MAP = {
+        chess.WHITE:0, chess.BLACK:1
+    }
     arr = np.zeros((8,8,12), dtype=np.float32)
     for sq in board.piece_map():
         piece_type = board.piece_at(sq).piece_type
-        rank, file = divmod(sq,64)
-        arr[rank,file,PIECE_MAP[piece_type]] = 1.0
+        piece_colour = board.piece_at(sq).color
+        rank = chess.square_rank(sq)
+        file = chess.square_file(sq)
+        arr[rank,file,PIECE_MAP[piece_type]+(6*PIECE_COLOUR_MAP[piece_colour])] = 1.0
     return arr
 
 # ------------------------------------------------------------------

@@ -4,9 +4,9 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
 # local imports – make sure the package root is on PYTHONPATH
-from .config   import *
-from .dataset  import ChessPolicyDataset
-from .model    import ChessNet
+from config   import *
+from dataset  import ChessPolicyDataset
+from model    import ChessNet
 
 # ------------------------------------------------------------------
 def train_one_epoch(net, loader, lr=LEARNING_RATE):
