@@ -4,6 +4,7 @@ from chess_ui import ChessUI
 # Make sure to import SmartBot from bots.py
 from bots import RandomBot, PacifistBot, HumanPlayer, FreezerBot, CrasherBot, SmartBot
 from maia1900_bot import Maia1900Bot
+from ratnas_nightmare import RatnasNightmare
 from secure_bot import SecureBotWrapper
 
 if __name__ == "__main__":
@@ -27,7 +28,7 @@ if __name__ == "__main__":
         
     else:
         # Default: Watch two bots fight
-        player1 = SecureBotWrapper(Maia1900Bot, "MaiaBot-1900")
+        player1 = SecureBotWrapper(RatnasNightmare, "Ratna's Nightmare")
         player2 = SecureBotWrapper(SmartBot, "Gemini SmartBot")
 
     # Launch the game

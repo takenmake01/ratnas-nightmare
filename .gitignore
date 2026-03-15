@@ -93,5 +93,7 @@ dmypy.json
 *.pth
 *.pt
 
+game_saves/
+
 # ignore runs
 events.out.tfevents.*

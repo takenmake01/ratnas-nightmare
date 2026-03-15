@@ -42,6 +42,4 @@ if __name__ == "__main__":
         # with torch.no_grad():
         #     writer.add_scalar("loss", nn.L1Loss(), global_step=epoch)
 
-    torch.save(net, "ratnasNightmare.pt")
-
-    
+    torch.save(net, "ratnasNightmare.pth")
